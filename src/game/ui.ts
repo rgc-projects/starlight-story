@@ -331,32 +331,39 @@ export class GameUI {
         g.fillRect(S(sx + 2), S(slotY + 2 + (slotS - 4) * (1 - ratio)), S(slotS - 4), S((slotS - 4) * ratio));
         txt(g, cd >= 1 ? cd.toFixed(1) : cd.toFixed(1), sx + slotS / 2, slotY + slotS / 2, 9.5, '#ffe070', 'center', true);
       }
-      // 键位角标
-      g.fillStyle = 'rgba(10,8,22,0.85)';
-      g.fillRect(S(sx + 2), S(slotY + 2), S(10), S(9));
-      txt(g, keyLabel, sx + 7, slotY + 6.5, 6.5, '#ffd870', 'center', true, false);
+      // 键位角标（自动适应当前键位方案宽度）
+      const klw = Math.max(10, keyLabel.length * 5 + 4);
+      g.fillStyle = 'rgba(10,8,22,0.88)';
+      g.fillRect(S(sx + 2), S(slotY + 2), S(klw), S(9));
+      txt(g, keyLabel, sx + 2 + klw / 2, slotY + 6.5, 6.1, '#ffd870', 'center', true, false);
       if (sub) txt(g, sub, sx + slotS - 2, slotY + slotS - 5, 6, '#90d0ff', 'right', false);
       if (badge) txt(g, badge, sx + slotS - 2, slotY + slotS - 5, 7, '#ffffff', 'right', true);
       if (hov && click && onClick) onClick();
     };
 
-    drawSlot(298, 'A', `atk_${player.job}`, 0, 1, '普攻');
-    drawSlot(334, 'Q', job.skills[0].icon, player.cdQ, job.skills[0].cd, `${job.skills[0].mp}M`);
-    drawSlot(370, 'W', job.skills[1].icon, player.cdW, job.skills[1].cd, `${job.skills[1].mp}M`);
-    drawSlot(410, 'Z', 'hp', 0, 1, '', `×${player.potHp}`, false, () => player.usePotion('hp', fx));
-    drawSlot(446, 'X', 'mp', 0, 1, '', `×${player.potMp}`, false, () => player.usePotion('mp', fx));
-    drawSlot(486, 'I', 'bag', 0, 1, '', '背包', this.hasBetterGear(player), () => actions.openInventory());
+    const kb = input.labels();
+    drawSlot(298, kb.attack, `atk_${player.job}`, 0, 1, '普攻');
+    drawSlot(334, kb.skill1, job.skills[0].icon, player.cdQ, job.skills[0].cd, `${job.skills[0].mp}M`);
+    drawSlot(370, kb.skill2, job.skills[1].icon, player.cdW, job.skills[1].cd, `${job.skills[1].mp}M`);
+    drawSlot(410, kb.potHp, 'hp', 0, 1, '', `×${player.potHp}`, false, () => player.usePotion('hp', fx));
+    drawSlot(446, kb.potMp, 'mp', 0, 1, '', `×${player.potMp}`, false, () => player.usePotion('mp', fx));
+    drawSlot(486, kb.bag === 'Tab/I' ? 'I' : 'I', 'bag', 0, 1, '', '背包', this.hasBetterGear(player), () => actions.openInventory());
 
-    // --- 右侧：金币、星辉碎片、静音与菜单 ---
+    // --- 右侧：金币、星辉碎片、键位切换、静音与菜单 ---
     g.imageSmoothingEnabled = false;
     g.drawImage(itemIcon('gold'), S(524), S(hy + 6), S(12), S(12));
     txt(g, `${player.gold}`, 539, hy + 12.5, 8.5, '#ffd84a', 'left', true);
     g.drawImage(itemIcon('shard'), S(524), S(hy + 22), S(12), S(12));
     txt(g, `${player.shards}/${SHARDS_NEEDED}`, 539, hy + 28.5, 8.5, '#7ff8ff', 'left', true);
 
-    if (button(g, mx, my, click, 586, hy + 5, 22, 14, audio.muted ? '静' : '音', '#6a5a9a')) audio.toggleMute();
-    if (button(g, mx, my, click, 610, hy + 5, 25, 14, '菜单', '#6a5a9a')) actions.openPause();
-    txt(g, '↑互动/传送', 610, hy + 28.5, 6.5, '#b8b4d8', 'center', false);
+    if (button(g, mx, my, click, 580, hy + 5, 24, 14, audio.muted ? '静' : '音', '#6a5a9a')) audio.toggleMute();
+    if (button(g, mx, my, click, 606, hy + 5, 30, 14, '菜单', '#6a5a9a')) actions.openPause();
+    if (button(g, mx, my, click, 580, hy + 22, 56, 15, `键:${kb.short}`, '#5cb8ff')) {
+      const next = input.toggleScheme();
+      audio.sfx('select');
+      fx.toast(`已切换键位：${input.labels().name}`, '#7fe0ff');
+      void next;
+    }
 
     // --- 最底部：经典超长 10 段式 EXP 经验条 ---
     const ey = 350, eh = 10;
@@ -519,43 +526,62 @@ export class GameUI {
     });
 
     const mx = input.mouse.x, my = input.mouse.y, click = input.mouse.clicked;
+    const kb = input.labels();
     if (m.showHelp) {
-      panel(g, 130, 146, 380, 174, 'rgba(16,12,34,0.96)', '#ffd447', '#4a3d72');
-      txt(g, '操作指南与玩法说明', 320, 163, 11, '#ffe47a', 'center', true);
-      const tips = [
-        '移动 / 攀爬：方向键 ← → ↑ ↓  |  跳跃 / 二段空中冲刺：Space / C',
-        '穿透薄平台：↓ + Space  |  对话 / 进传送门 / 开宝箱：↑',
-        '普攻连击：A / J / Ctrl  |  职业技能：Q、W  |  喝红/蓝药：Z、X',
-        '随时自由切职业：数字键 1(剑士)  2(法师)  3(游侠)',
-        '背包与换装：I / B  |  静音：M  |  暂停与帮助：Esc / P',
-        '主线目标：集齐 3 枚星辉碎片，登上蚀月高塔击败魔王拯救公主！',
+      panel(g, 110, 136, 420, 192, 'rgba(16,12,34,0.96)', '#ffd447', '#4a3d72');
+      txt(g, `操作指南 · 当前方案：${kb.name}`, 320, 153, 10.5, '#ffe47a', 'center', true);
+      const tips = input.scheme === 'modern' ? [
+        '移动 / 攀爬：WASD（也支持方向键） | 跳跃 / 空中冲刺：Space / K',
+        '穿透薄平台：S + Space 或 快速双击 S  |  对话 / 传送门 / 宝箱：F / E / W',
+        '普攻连击：J 或 鼠标左键  |  大招技能：Q / U  |  位移闪避：L / Shift / 右键',
+        '喝红/蓝药：Z / X（或 4/5） |  切职业：1(剑士) 2(法师) 3(游侠)',
+        '背包装备：Tab / I / B  |  切键位方案：F2  |  静音：M  |  暂停：Esc',
+        '小贴士：法师按住 W/↑ 再放瞬移可向上闪现登台；位移技可取消后摇躲 Boss！',
+      ] : [
+        '移动 / 攀爬：方向键 ← → ↑ ↓  |  跳跃 / 空中冲刺：Space / C',
+        '穿透薄平台：↓ + Space 或 快速双击 ↓  |  对话 / 传送门 / 宝箱：↑ / E',
+        '普攻连击：D / A / Ctrl  |  大招技能：Q / S  |  位移闪避：W / F / Shift',
+        '喝红/蓝药：Z / X（或 4/5） |  切职业：1(剑士) 2(法师) 3(游侠)',
+        '背包装备：Tab / I / B  |  切键位方案：F2  |  静音：M  |  暂停：Esc',
+        '小贴士：法师按住 ↑ 再放瞬移可向上闪现登台；位移技可取消后摇躲 Boss！',
       ];
-      tips.forEach((line, i) => txt(g, line, 148, 186 + i * 17, 7.8, i === 5 ? '#ffd870' : '#e4ecff', 'left'));
-      if (button(g, mx, my, click, 270, 294, 100, 20, '返回', '#cfa252') || input.pressed('cancel')) {
+      tips.forEach((line, i) => txt(g, line, 126, 176 + i * 17, 7.6, i === 5 ? '#ffd870' : '#e4ecff', 'left'));
+      if (button(g, mx, my, click, 175, 298, 156, 20, `切换键位：${input.scheme === 'modern' ? '冒险岛经典' : '现代 WASD'}`, '#5cb8ff')) {
+        audio.sfx('select');
+        input.toggleScheme();
+        input.consumeAll();
+      }
+      if (button(g, mx, my, click, 345, 298, 96, 20, '返回', '#cfa252') || input.pressed('cancel')) {
         audio.sfx('click');
+        input.consumeAll();
         m.showHelp = false;
       }
       return;
     }
 
     const bx = 250, bw = 140;
-    let by = 204;
-    let trigger: 'continue' | 'new' | 'help' | null = null;
+    let by = 200;
+    let trigger: 'continue' | 'new' | 'help' | 'scheme' | null = null;
     if (m.hasSave) {
       if (button(g, mx, my, click, bx, by, bw, 24, '继续冒险', '#ffd447') || input.pressed('confirm')) trigger = 'continue';
-      by += 30;
+      by += 28;
     }
     if (button(g, mx, my, click, bx, by, bw, 24, m.hasSave ? '新的冒险' : '开始冒险', '#5cb8ff') || (!m.hasSave && input.pressed('confirm'))) {
       if (!trigger) trigger = 'new';
     }
-    by += 30;
-    if (button(g, mx, my, click, bx, by, bw, 22, '操作说明', '#9a7ad8')) {
+    by += 28;
+    if (button(g, mx, my, click, bx, by, bw, 22, `键位：${kb.short}（点击切换）`, '#4fd88a')) {
+      if (!trigger) trigger = 'scheme';
+    }
+    by += 26;
+    if (button(g, mx, my, click, bx, by, bw, 20, '操作说明', '#9a7ad8')) {
       if (!trigger) trigger = 'help';
     }
-    txt(g, '按 Enter / 点击开始冒险 · 进度自动保存', 320, 336, 7.5, '#b8c4e8', 'center');
+    txt(g, `当前键位：${kb.name} · 按 F2 随时切换`, 320, 340, 7.3, '#b8c4e8', 'center');
 
     if (trigger === 'continue') { audio.sfx('select'); input.consumeAll(); actions.continueSave(); }
     else if (trigger === 'new') { audio.sfx('select'); input.consumeAll(); actions.startNew(); }
+    else if (trigger === 'scheme') { audio.sfx('select'); input.toggleScheme(); input.consumeAll(); }
     else if (trigger === 'help') { audio.sfx('click'); input.consumeAll(); m.showHelp = true; }
   }
 
@@ -856,29 +882,37 @@ export class GameUI {
   private drawPause(g: Ctx, input: Input, actions: UIActions) {
     g.fillStyle = 'rgba(8,6,18,0.68)';
     g.fillRect(0, 0, S(VIEW_W), S(VIEW_H));
-    panel(g, 160, 48, 320, 248, 'rgba(18,14,36,0.96)', '#d8ae58', '#423668');
-    txt(g, '游 戏 暂 停', 320, 68, 13, '#ffe47a', 'center', true);
-    const tips = [
-      '← → 移动 | Space 跳跃/空中冲刺 | ↓+Space 下穿平台',
-      'A/J/Ctrl 普攻 | Q/W 技能 | 1/2/3 切换职业',
-      'Z/X 喝红蓝药 | I 背包 | ↑ 对话/传送门/爬绳 | M 静音',
+    panel(g, 136, 36, 368, 268, 'rgba(18,14,36,0.96)', '#d8ae58', '#423668');
+    txt(g, '游 戏 暂 停 · 键 位 设 置', 320, 54, 12.5, '#ffe47a', 'center', true);
+    const kb = input.labels();
+    const tips = input.scheme === 'modern' ? [
+      `移动：WASD/方向键 | 跳/空中冲刺：Space/K | 下穿：S+Space/双击S`,
+      `普攻：J/左键 | 技能1：Q/U | 位移技：L/Shift/右键 | 互动：F/E/W`,
+      `红/蓝药：Z/X | 切职业：1/2/3 | 背包：Tab/I | 静音：M`,
+    ] : [
+      `移动：←→↑↓ | 跳/空中冲刺：Space/C | 下穿：↓+Space/双击↓`,
+      `普攻：D/A/Ctrl | 技能1：Q/S | 位移技：W/F/Shift | 互动：↑/E`,
+      `红/蓝药：Z/X | 切职业：1/2/3 | 背包：Tab/I | 静音：M`,
     ];
-    tips.forEach((t, i) => txt(g, t, 320, 92 + i * 13, 7, '#c8d4f4', 'center'));
+    tips.forEach((t, i) => txt(g, t, 320, 76 + i * 13, 7, '#c8d4f4', 'center'));
 
     const mx = input.mouse.x, my = input.mouse.y, click = input.mouse.clicked;
-    if (button(g, mx, my, click, 240, 140, 160, 24, '继续冒险', '#5cb8ff') || input.pressed('pause')) {
+    if (button(g, mx, my, click, 215, 122, 210, 23, '继续冒险', '#5cb8ff') || input.pressed('pause')) {
       audio.sfx('click'); actions.closeModal(); return;
     }
-    if (button(g, mx, my, click, 240, 170, 160, 24, audio.muted ? '开启音乐与音效 (M)' : '静音音乐与音效 (M)', '#9a7ad8')) {
+    if (button(g, mx, my, click, 215, 150, 210, 23, `键位方案：${kb.name}`, '#4fd8c8')) {
+      input.toggleScheme(); audio.sfx('select'); input.consumeAll();
+    }
+    if (button(g, mx, my, click, 215, 178, 210, 23, audio.muted ? '开启音乐与音效 (M)' : '静音音乐与音效 (M)', '#9a7ad8')) {
       audio.toggleMute();
     }
-    if (button(g, mx, my, click, 240, 200, 160, 24, '返回晨风镇（回满状态）', '#4fd88a')) {
+    if (button(g, mx, my, click, 215, 206, 210, 23, '返回晨风镇（回满状态）', '#4fd88a')) {
       audio.sfx('portal'); actions.returnTown(); return;
     }
-    if (button(g, mx, my, click, 240, 230, 160, 24, '保存进度', '#ffd447')) {
+    if (button(g, mx, my, click, 215, 234, 210, 23, '保存进度', '#ffd447')) {
       actions.saveNow(); audio.sfx('select');
     }
-    if (button(g, mx, my, click, 240, 260, 160, 24, '返回标题画面', '#c85a6a')) {
+    if (button(g, mx, my, click, 215, 262, 210, 23, '返回标题画面', '#c85a6a')) {
       audio.sfx('click'); actions.backToTitle();
     }
   }

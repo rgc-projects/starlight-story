@@ -197,7 +197,7 @@ export interface QuestDef {
   hint: string;
 }
 export const QUESTS: QuestDef[] = [
-  { title: '星辉的召唤', desc: '与晨风镇的星辉长老对话', type: 'talk', target: 'elder', hint: '靠近长老按 ↑ 对话' },
+  { title: '星辉的召唤', desc: '与晨风镇的星辉长老对话', type: 'talk', target: 'elder', hint: '靠近长老按 F / W / ↑ 对话' },
   { title: '草原的黏糊麻烦', desc: '击败青苔史莱姆', type: 'kill', target: 'slime', count: 8, reward: { exp: 60, gold: 150, shard: 1 }, hint: '前往东边的翠绿草原' },
   { title: '红伞的威胁', desc: '击败红伞蘑菇怪', type: 'kill', target: 'mushroom', count: 6, reward: { exp: 160, gold: 300, item: { rarity: 1, slot: 'weapon', level: 6 } }, hint: '蘑菇怪多在草原高处平台' },
   { title: '古林的发条声', desc: '击败发条铁皮骑士', type: 'kill', target: 'knight', count: 6, reward: { exp: 420, gold: 500, shard: 1 }, hint: '穿过草原东侧传送门进入萤火古林' },

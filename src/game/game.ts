@@ -97,7 +97,8 @@ export class Game {
         this.loadMap('town');
         this.ui.showBanner(this.map.name, this.map.sub);
         audio.playMusic(this.map.music);
-        this.fx.toast('欢迎来到星辉王国！靠近前方的星辉长老按 ↑ 接取主线任务', '#ffe47a');
+        const ik = this.input.labels().interact;
+        this.fx.toast(`欢迎来到星辉王国！靠近星辉长老按 ${ik} 接取任务（F2 可切换现代/经典键位）`, '#ffe47a');
       },
       continueSave: () => {
         this.ui.modal = null;
@@ -477,11 +478,12 @@ export class Game {
 
   private openNpc(npc: NpcDef) {
     if (npc.kind === 'sign') {
+      const kb = this.input.labels();
       this.ui.modal = {
         kind: 'dialog', speaker: '晨风镇告示牌', portrait: 'sign', idx: 0,
         lines: [
           '【王国通告】暗影魔王·莫德雷德突袭王都，囚禁了艾莉娅公主于东方的蚀月高塔！\n唯有集齐 3 枚星辉碎片，方能打破高塔暗影结界。',
-          '【冒险者操作指引】← → 移动 | Space 跳跃/二段空中冲刺 | ↓+Space 穿透薄平台\nA/J/Ctrl 普攻连击 | Q/W 职业技能 | 1/2/3 自由切职业 | Z/X 喝药 | I 背包',
+          `【当前键位：${kb.name}】（按 F2 或点右下角可随时切换）\n移动：${kb.move} | 跳/空中冲刺：${kb.jump} | 下穿：${kb.drop}\n普攻：${kb.attack} | 技能：${kb.skill1} / ${kb.skill2} | 互动：${kb.interact} | 喝药：Z/X | 切职业：1/2/3`,
         ],
       };
     } else if (npc.kind === 'smith') {
@@ -554,8 +556,13 @@ export class Game {
     this.time += dt;
     if (this.ui.bannerTimer > 0) this.ui.bannerTimer = Math.max(0, this.ui.bannerTimer - dt);
 
-    // 静音快捷键任何时刻生效
+    // 静音与键位方案切换快捷键任何时刻生效
     if (this.input.pressed('mute')) audio.toggleMute();
+    if (this.input.pressed('scheme')) {
+      this.input.toggleScheme();
+      audio.sfx('select');
+      this.fx.toast(`已切换键位：${this.input.labels().name}`, '#7fe0ff');
+    }
 
     // 标题画面：只更新背景粒子与微动效
     if (this.ui.modal?.kind === 'title') {
@@ -620,8 +627,8 @@ export class Game {
       return;
     }
 
-    // 互动键（按 ↑ 优先检查对话/宝箱/传送门）
-    if (this.input.pressed('up') && !this.player.climbing) {
+    // 互动键（现代模式 F/E/W/↑，经典模式 ↑/E：优先检查对话/宝箱/传送门）
+    if (this.input.pressed('interact') && !this.player.climbing) {
       if (this.handleInteract()) return;
     }
 
@@ -634,9 +641,9 @@ export class Game {
 
     this.playTime += dt;
 
-    // 玩家更新
+    // 玩家更新（传入 camX 以支持现代模式鼠标主战区自动朝向攻击）
     const hooks = this.combatHooks();
-    this.player.update(dt, this.input, this.map, this.fx, hooks, this.victoryDelay <= 0);
+    this.player.update(dt, this.input, this.map, this.fx, hooks, this.victoryDelay <= 0, this.camX);
 
     // 玩家死亡检测
     if (this.player.hp <= 0) {
@@ -1066,7 +1073,7 @@ export class Game {
   private drawTowerPrincess(g: Ctx) {
     const pf = npcSprites('princess')[Math.floor(this.time * 2.5) % 2].l;
     if (!this.princessRescued) {
-      const cx = 825, cy = 225 + Math.sin(this.time * 2) * 3;
+      const cx = 815, cy = 242 + Math.sin(this.time * 2) * 2.5;
       // 锁链悬吊
       g.fillStyle = '#a08030';
       for (let y = 0; y < cy - 58; y += 6) g.fillRect(cx - 1, y, 2, 4);
@@ -1102,21 +1109,22 @@ export class Game {
       g.restore();
     };
 
+    const ik = this.input.labels().interact;
     // NPC 名牌与互动提示
     for (const npc of this.map.npcs) {
       const near = dist(this.player.x, this.player.y, npc.x, npc.y) < 42;
-      label(npc.x, npc.y - 44, near ? `↑ ${npc.kind === 'smith' ? '打开铁匠铺' : '对话'} (${npc.name})` : npc.name, near ? 'rgba(42,30,86,0.92)' : 'rgba(14,12,30,0.72)', near ? '#ffe47a' : '#d8e8ff');
+      label(npc.x, npc.y - 44, near ? `[${ik}] ${npc.kind === 'smith' ? '打开铁匠铺' : '对话'} (${npc.name})` : npc.name, near ? 'rgba(42,30,86,0.92)' : 'rgba(14,12,30,0.72)', near ? '#ffe47a' : '#d8e8ff');
     }
     // 传送门目的地名牌
     for (const po of this.map.portals) {
       const locked = po.locked && this.player.shards < SHARDS_NEEDED;
       const near = dist(this.player.x, this.player.y, po.x, po.y) < 48;
-      const text = locked ? `🔒 ${po.label} (需3碎片)` : near ? `↑ 进入 ${po.label}` : po.label;
+      const text = locked ? `🔒 ${po.label} (需3碎片)` : near ? `[${ik}] 进入 ${po.label}` : po.label;
       label(po.x, po.y - 54, text, near ? 'rgba(24,52,88,0.92)' : 'rgba(14,12,30,0.72)', locked ? '#ff9aa8' : near ? '#8ef8ff' : '#c8e4ff');
     }
     // 宝箱提示
     if (this.chest && !this.chest.opened && dist(this.player.x, this.player.y, this.chest.x, this.chest.y) < 55) {
-      label(this.chest.x, this.chest.y - 34, '↑ 开启秘宝宝箱！', 'rgba(68,42,16,0.92)', '#ffe47a');
+      label(this.chest.x, this.chest.y - 34, `[${ik}] 开启秘宝宝箱！`, 'rgba(68,42,16,0.92)', '#ffe47a');
     }
     // 通关后晨风镇公主名牌
     if (this.map.id === 'town' && this.bossDefeated) {

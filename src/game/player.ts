@@ -47,6 +47,7 @@ export class Player {
   onThin = false;
   coyote = 0;
   jumpBuf = 0;
+  downTapTimer = 0;
   airJumps = 1;
   dropTimer = 0;
   climbing = false;
@@ -54,12 +55,15 @@ export class Player {
   ropeCool = 0;
   flashTrail = 0;
 
-  // 战斗状态
+  // 战斗状态与输入缓冲
   job: JobId = 'sword';
   cdQ = 0;
   cdW = 0;
   atkTimer = 0;
   atkDur = 0;
+  atkBuf = 0;
+  skill1Buf = 0;
+  skill2Buf = 0;
   combo = 0;
   comboWindow = 0;
   atkHitDone = false;
@@ -272,12 +276,12 @@ export class Player {
     return true;
   }
 
-  update(dt: number, input: Input, map: MapDef, fx: Effects, hooks: CombatHooks, allowControl = true) {
+  update(dt: number, input: Input, map: MapDef, fx: Effects, hooks: CombatHooks, allowControl = true, camX = 0) {
     const st = this.stats();
     this.animTime += dt;
     this.hpLag = approach(this.hpLag, this.hp, st.maxHp * 0.75 * dt);
 
-    // 冷却与计时
+    // 冷却与输入缓冲计时
     if (this.cdQ > 0) this.cdQ = Math.max(0, this.cdQ - dt);
     if (this.cdW > 0) this.cdW = Math.max(0, this.cdW - dt);
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
@@ -285,12 +289,26 @@ export class Player {
     if (this.potCool > 0) this.potCool = Math.max(0, this.potCool - dt);
     if (this.dropTimer > 0) this.dropTimer = Math.max(0, this.dropTimer - dt);
     if (this.ropeCool > 0) this.ropeCool = Math.max(0, this.ropeCool - dt);
+    if (this.downTapTimer > 0) this.downTapTimer = Math.max(0, this.downTapTimer - dt);
+    if (this.atkBuf > 0) this.atkBuf = Math.max(0, this.atkBuf - dt);
+    if (this.skill1Buf > 0) this.skill1Buf = Math.max(0, this.skill1Buf - dt);
+    if (this.skill2Buf > 0) this.skill2Buf = Math.max(0, this.skill2Buf - dt);
     if (this.comboWindow > 0) {
       this.comboWindow -= dt;
       if (this.comboWindow <= 0) this.combo = 0;
     }
     if (this.castTimer > 0) this.castTimer = Math.max(0, this.castTimer - dt);
     if (this.flashTrail > 0) this.flashTrail = Math.max(0, this.flashTrail - dt);
+
+    // 现代模式同时支持在主战区用鼠标左键普攻、右键释放位移技
+    const mouseField = allowControl && input.scheme === 'modern' && input.mouseInPlayfield();
+    const wantAtkPress = allowControl && (input.pressed('attack') || (mouseField && input.mouse.clicked));
+    const wantAtkHold = allowControl && (input.isDown('attack') || (mouseField && input.mouse.down));
+    const wantSkill1 = allowControl && input.pressed('skill1');
+    const wantSkill2 = allowControl && (input.pressed('skill2') || (mouseField && input.mouse.rclicked));
+    if (wantAtkPress) this.atkBuf = 0.14;
+    if (wantSkill1) this.skill1Buf = 0.14;
+    if (wantSkill2) this.skill2Buf = 0.14;
 
     // 自然回复（主城快速回血蓝，野外缓慢回蓝）
     if (map.id === 'town') {
@@ -346,10 +364,10 @@ export class Player {
       }
     }
 
-    // 普攻计时
+    // 普攻计时（前摇缩短至 2~3 帧，挥砍/射箭/发弹瞬间响应）
     if (this.atkTimer > 0) {
       this.atkTimer -= dt;
-      if (!this.atkHitDone && this.atkTimer <= this.atkDur * 0.58) {
+      if (!this.atkHitDone && this.atkTimer <= this.atkDur * 0.84) {
         this.atkHitDone = true;
         this.executeBasicHit(fx, hooks);
       }
@@ -368,8 +386,8 @@ export class Player {
       this.onGround = false;
       this.airJumps = 1;
       this.x = this.climbRope.x;
-      if (moveU) this.y -= 108 * dt;
-      if (moveD) this.y += 118 * dt;
+      if (moveU) this.y -= 118 * dt;
+      if (moveD) this.y += 128 * dt;
       if (this.y <= this.climbRope.top) {
         this.y = this.climbRope.top;
         this.climbing = false;
@@ -379,16 +397,18 @@ export class Player {
         this.y = this.climbRope.bottom;
         this.climbing = false;
         this.climbRope = null;
-      } else if (allowControl && input.pressed('jump')) {
+      } else if (allowControl && (input.pressed('jump') || wantAtkPress || wantSkill1 || wantSkill2)) {
         this.climbing = false;
         this.climbRope = null;
-        this.ropeCool = 0.25;
-        this.vy = -335;
+        this.ropeCool = 0.24;
+        if (input.pressed('jump')) {
+          this.vy = -340;
+          audio.sfx('jump');
+        }
         if (axis !== 0) {
           this.dir = axis > 0 ? 1 : -1;
-          this.vx = axis * 165;
+          this.vx = axis * 170;
         }
-        audio.sfx('jump');
       }
       return;
     }
@@ -396,7 +416,7 @@ export class Player {
     // 尝试抓绳索
     if (allowControl && this.ropeCool <= 0 && this.hurtTimer <= 0 && this.whirlTimer <= 0 && (moveU || moveD)) {
       for (const r of map.ropes) {
-        if (Math.abs(this.x - r.x) <= 12) {
+        if (Math.abs(this.x - r.x) <= 13) {
           const canUp = moveU && this.y > r.top + 3 && this.y <= r.bottom + 8;
           const canDown = moveD && this.y >= r.top - 4 && this.y < r.bottom - 10;
           if (canUp || canDown) {
@@ -413,24 +433,35 @@ export class Player {
       }
     }
 
-    // 跳跃缓冲
-    if (allowControl && input.pressed('jump')) this.jumpBuf = 0.12;
+    // 跳跃缓冲 & 双击下键穿透薄平台检测
+    if (allowControl && input.pressed('jump')) this.jumpBuf = 0.13;
     else if (this.jumpBuf > 0) this.jumpBuf = Math.max(0, this.jumpBuf - dt);
 
-    // 水平移动
-    const speedMult = this.whirlTimer > 0 ? 0.72 : this.atkTimer > 0 && this.onGround ? 0.42 : 1;
+    let doubleTapDrop = false;
+    if (allowControl && input.pressed('down') && this.onGround && this.onThin) {
+      if (this.downTapTimer > 0) {
+        doubleTapDrop = true;
+        this.downTapTimer = 0;
+      } else {
+        this.downTapTimer = 0.24;
+      }
+    }
+
+    // 水平移动（急停转向高加速度，空中响应丝滑无滑冰感）
+    const speedMult = this.whirlTimer > 0 ? 0.78 : this.atkTimer > 0 && this.onGround ? 0.55 : 1;
     const targetVx = this.hurtTimer > 0 ? this.vx : axis * MOVE_SPEED * speedMult;
-    const accel = this.onGround ? 1500 : 880;
+    const turning = axis !== 0 && Math.sign(this.vx) !== 0 && Math.sign(this.vx) !== axis;
+    const accel = this.onGround ? (turning ? 2400 : 1750) : 1180;
     if (this.hurtTimer <= 0) {
       this.vx = approach(this.vx, targetVx, accel * dt);
       if (axis !== 0 && this.atkTimer <= 0) this.dir = axis > 0 ? 1 : -1;
     }
 
-    // 下 + 跳 穿透薄平台
-    if (allowControl && this.onGround && this.onThin && moveD && this.jumpBuf > 0) {
+    // 下 + 跳 或 双击下键 穿透薄平台
+    if (allowControl && this.onGround && this.onThin && ((moveD && this.jumpBuf > 0) || doubleTapDrop)) {
       this.dropTimer = 0.22;
       this.y += 3;
-      this.vy = 45;
+      this.vy = 55;
       this.onGround = false;
       this.onThin = false;
       this.coyote = 0;
@@ -451,12 +482,12 @@ export class Player {
       if (axis !== 0) {
         this.dir = axis > 0 ? 1 : -1;
         this.vx = this.dir * 290;
-        this.vy = -275;
+        this.vy = -280;
         this.flashTrail = 0.26;
         fx.spawnRing(this.x - this.dir * 10, this.y - 16, 26, '#7fe0ff', 0.24, 2.5);
         fx.burst(this.x - this.dir * 8, this.y - 14, 12, ['#7fe0ff', '#ffffff', '#ffd447'], 30, 120, 20);
       } else {
-        this.vy = -350;
+        this.vy = -355;
         this.flashTrail = 0.16;
         fx.spawnRing(this.x, this.y, 24, '#ffd447', 0.24, 2);
         fx.burst(this.x, this.y, 10, ['#ffd447', '#ffffff', '#7fe0ff'], 25, 95, 40);
@@ -482,12 +513,31 @@ export class Player {
     this.vy = Math.min(MAX_FALL, this.vy + GRAV * dt);
     this.moveAndCollide(dt, map, fx);
 
-    // 攻击与技能触发
-    if (allowControl && this.hurtTimer <= 0 && this.whirlTimer <= 0) {
-      if (input.pressed('skill1')) this.castSkillQ(map, fx, hooks);
-      else if (input.pressed('skill2')) this.castSkillW(map, fx, hooks);
-      else if ((input.pressed('attack') || input.isDown('attack')) && this.atkTimer <= 0) {
-        this.startAttack(fx);
+    // 攻击与技能触发（支持瞬间转向 + 缓冲触发 + 位移技取消旋风斩/普攻后摇）
+    const faceForAction = (useMouse: boolean) => {
+      if (axis !== 0) this.dir = axis > 0 ? 1 : -1;
+      else if (useMouse && mouseField) {
+        const wx = camX + input.mouse.x;
+        if (Math.abs(wx - this.x) > 8) this.dir = wx >= this.x ? 1 : -1;
+      }
+    };
+    if (allowControl && this.hurtTimer <= 0) {
+      if (this.skill2Buf > 0) {
+        // 位移技优先响应，可随时取消旋风斩与普攻后摇躲避 Boss 技能！
+        faceForAction(input.mouse.rclicked);
+        if (this.castSkillW(map, fx, hooks, moveU)) {
+          this.whirlTimer = 0;
+          this.skill2Buf = 0;
+        }
+      } else if (this.whirlTimer <= 0) {
+        if (this.skill1Buf > 0) {
+          faceForAction(false);
+          if (this.castSkillQ(map, fx, hooks)) this.skill1Buf = 0;
+        } else if ((this.atkBuf > 0 || wantAtkHold) && this.atkTimer <= 0) {
+          faceForAction(mouseField && (input.mouse.clicked || input.mouse.down));
+          this.atkBuf = 0;
+          this.startAttack(fx);
+        }
       }
     }
 
@@ -612,10 +662,10 @@ export class Player {
     }
   }
 
-  private castSkillQ(map: MapDef, fx: Effects, hooks: CombatHooks) {
+  private castSkillQ(map: MapDef, fx: Effects, hooks: CombatHooks): boolean {
     const sk = JOBS[this.job].skills[0];
-    if (this.cdQ > 0) return;
-    if (this.mp < sk.mp) { audio.sfx('error'); fx.toast('MP 不足！按 X 喝蓝药水', '#8ab8ff'); return; }
+    if (this.cdQ > 0) return false;
+    if (this.mp < sk.mp) { audio.sfx('error'); fx.toast('MP 不足！按 X 喝蓝药水', '#8ab8ff'); this.skill1Buf = 0; return false; }
     this.mp -= sk.mp;
     this.cdQ = sk.cd;
     if (this.job === 'sword') {
@@ -626,7 +676,7 @@ export class Player {
       fx.shake(3, 0.25);
     } else if (this.job === 'mage') {
       // Q：天降陨石（召唤 3 颗巨型星辰陨石轰炸前方）
-      this.castTimer = 0.35;
+      this.castTimer = 0.32;
       audio.sfx('meteor');
       const groundY = this.findGroundBelow(this.x + this.dir * 115, this.y, map);
       hooks.spawnMeteor(clamp(this.x + this.dir * 95, 40, map.width - 40), groundY, 2.3, 0.0);
@@ -635,23 +685,24 @@ export class Player {
       fx.burst(this.x, this.y - 26, 14, ['#ff9a3a', '#ffd447', '#c070ff'], 30, 110, -20);
     } else {
       // Q：疾风箭雨
-      this.castTimer = 0.3;
+      this.castTimer = 0.28;
       audio.sfx('flash');
       const cx = clamp(this.x + this.dir * 120, 70, map.width - 70);
       const groundY = this.findGroundBelow(cx, this.y, map);
       hooks.spawnArrowRain(cx, groundY, 170, 2.6, 0.72);
       fx.burst(this.x + this.dir * 10, this.y - 24, 12, ['#6af09a', '#ffffff', '#b8ff9a'], 40, 140, -60);
     }
+    return true;
   }
 
-  private castSkillW(map: MapDef, fx: Effects, hooks: CombatHooks) {
+  private castSkillW(map: MapDef, fx: Effects, hooks: CombatHooks, holdUp = false): boolean {
     const sk = JOBS[this.job].skills[1];
-    if (this.cdW > 0) return;
-    if (this.mp < sk.mp) { audio.sfx('error'); fx.toast('MP 不足！按 X 喝蓝药水', '#8ab8ff'); return; }
+    if (this.cdW > 0) return false;
+    if (this.mp < sk.mp) { audio.sfx('error'); fx.toast('MP 不足！按 X 喝蓝药水', '#8ab8ff'); this.skill2Buf = 0; return false; }
     this.mp -= sk.mp;
     this.cdW = sk.cd;
     if (this.job === 'sword') {
-      // W：圣光冲锋（霸体突进）
+      // 圣光冲锋（霸体突进）
       this.chargeTimer = 0.34;
       this.chargeHitId = ++this.hitSeq;
       this.atkTimer = 0;
@@ -659,29 +710,42 @@ export class Player {
       fx.spawnRing(this.x, this.y - 18, 34, '#ffd447', 0.25, 3);
       fx.shake(2.5, 0.16);
     } else if (this.job === 'mage') {
-      // W：星界瞬移（短距闪烁并留下残影）
+      // 星界瞬移（短距闪烁并留下残影；按住上键可垂直向上瞬移登台！）
       audio.sfx('blink');
       const ox = this.x, oy = this.y;
       for (let i = 0; i < 3; i++) this.emitAfterimage(fx, '#b07dff', 0.32 - i * 0.05);
       fx.burst(ox, oy - 18, 16, ['#c07dff', '#7fe0ff', '#ffffff'], 30, 110, 0);
       fx.spawnRing(ox, oy - 18, 28, '#c07dff', 0.28, 2.5);
-      const nx = clamp(this.x + this.dir * 132, 20, map.width - 20);
-      // 路径上轻度空间震荡伤害
-      const minX = Math.min(ox, nx), maxX = Math.max(ox, nx);
-      hooks.meleeHit({ x: minX, y: oy - 36, w: maxX - minX + 16, h: 38 }, 0.9, this.dir * 80, -60, ++this.hitSeq, '#c07dff', true);
-      this.x = nx;
-      this.vy = Math.min(this.vy, -80);
-      this.invuln = Math.max(this.invuln, 0.35);
+      if (holdUp) {
+        // 向上瞬移：寻找头顶上方最近的平台或直接上跃 104px
+        let targetY = clamp(this.y - 104, 48, map.height - 20);
+        for (const p of map.platforms) {
+          if (this.x >= p.x - 8 && this.x <= p.x + p.w + 8 && p.y < this.y - 24 && p.y >= this.y - 124) {
+            targetY = Math.min(targetY, p.y);
+          }
+        }
+        hooks.meleeHit({ x: ox - 28, y: targetY - 24, w: 56, h: oy - targetY + 30 }, 0.9, 0, -90, ++this.hitSeq, '#c07dff', true);
+        this.y = targetY;
+        this.vy = -85;
+        this.onGround = false;
+      } else {
+        const nx = clamp(this.x + this.dir * 136, 20, map.width - 20);
+        const minX = Math.min(ox, nx), maxX = Math.max(ox, nx);
+        hooks.meleeHit({ x: minX, y: oy - 36, w: maxX - minX + 16, h: 38 }, 0.9, this.dir * 80, -60, ++this.hitSeq, '#c07dff', true);
+        this.x = nx;
+        this.vy = Math.min(this.vy, -80);
+      }
+      this.invuln = Math.max(this.invuln, 0.36);
       fx.burst(this.x, this.y - 18, 16, ['#7fe0ff', '#ffffff', '#d080ff'], 30, 110, 0);
       fx.spawnRing(this.x, this.y - 18, 30, '#7fe0ff', 0.28, 2.5);
     } else {
-      // W：后跳射击
+      // 后跳射击
       audio.sfx('flash');
       audio.sfx('arrow');
       this.vx = -this.dir * 235;
       this.vy = -270;
       this.onGround = false;
-      this.invuln = Math.max(this.invuln, 0.28);
+      this.invuln = Math.max(this.invuln, 0.3);
       this.flashTrail = 0.22;
       this.emitAfterimage(fx, '#6af09a', 0.24);
       const sx = this.x + this.dir * 10, sy = this.y - 18;
@@ -693,6 +757,7 @@ export class Player {
       }
       fx.burst(sx, sy, 10, ['#6af09a', '#ffffff'], 40, 120, 0);
     }
+    return true;
   }
 
   private findGroundBelow(x: number, y: number, map: MapDef): number {

@@ -383,7 +383,14 @@ export function drawBackground(g: Ctx, bg: BgSet, camX: number, camY: number, ma
 
 export function drawForeground(g: Ctx, bg: BgSet, camX: number, camY: number, maxCamY: number, t: number, yOffset = 0) {
   const lift = maxCamY - camY;
-  for (const L of bg.fg) drawLayer(g, L, camX, -lift * 0.3, t, yOffset);
+  // 前景草丛比地面更靠近镜头，人物向上跳（相机上移、lift > 0）时应随地面一起向下移出视野（1.25x 视差），绝不反向漂浮
+  for (const L of bg.fg) {
+    let ox = -((camX * L.factor + t * L.auto) % W);
+    if (ox > 0) ox -= W;
+    const y = Math.round(lift * L.factor + yOffset);
+    if (y > VIEW_H) continue;
+    for (let x = ox; x < VIEW_W; x += W) g.drawImage(L.c, Math.round(x), y);
+  }
 }
 
 function drawLayer(g: Ctx, L: Layer, camX: number, lift: number, t: number, yOffset = 0) {

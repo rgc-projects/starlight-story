@@ -1,0 +1,22 @@
+{
+  "name": "starlight-story",
+  "private": true,
+  "version": "1.0.0",
+  "description": "星辉物语 Starlight Story - 2D 横版像素风 ARPG（纯代码程序化美术与音效）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open",
+    "start": "vite --open",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --open",
+    "typecheck": "tsc --noEmit",
+    "cf:dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11",
+    "wrangler": "^4.0.0"
+  }
+}

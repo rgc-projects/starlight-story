@@ -360,9 +360,9 @@ export class Game {
     this.player.gainExp(def.exp, this.fx, this.combatHooks());
     spawnEnemyDrops(e, this.drops);
 
-    // 野外怪物定时刷新
+    // 野外怪物定时刷新（15~20 秒冷却，留足清怪和拾取节奏）
     if (e.fromSpawnIdx >= 0) {
-      this.respawnQueue.push({ spawnIdx: e.fromSpawnIdx, timer: rand(4.8, 6.2) });
+      this.respawnQueue.push({ spawnIdx: e.fromSpawnIdx, timer: rand(15, 20) });
     }
 
     // 推进主线任务
@@ -641,9 +641,9 @@ export class Game {
 
     this.playTime += dt;
 
-    // 玩家更新（传入 camX 以支持现代模式鼠标主战区自动朝向攻击）
+    // 玩家更新
     const hooks = this.combatHooks();
-    this.player.update(dt, this.input, this.map, this.fx, hooks, this.victoryDelay <= 0, this.camX);
+    this.player.update(dt, this.input, this.map, this.fx, hooks, this.victoryDelay <= 0);
 
     // 玩家死亡检测
     if (this.player.hp <= 0) {
@@ -689,13 +689,17 @@ export class Game {
       }
     }
 
-    // 野外刷怪重生队列
+    // 野外刷怪重生队列（若玩家正站在刷新点附近则延后 3 秒，防止贴脸突兀刷怪）
     for (let i = this.respawnQueue.length - 1; i >= 0; i--) {
       const rq = this.respawnQueue[i];
       rq.timer -= dt;
       if (rq.timer <= 0) {
         const sp = this.map.spawns[rq.spawnIdx];
         if (sp) {
+          if (dist(this.player.x, this.player.y, sp.x, sp.y) < 130) {
+            rq.timer = 3.0;
+            continue;
+          }
           this.enemies.push(new Enemy(sp.kind, sp.x, sp.y, this.map, rq.spawnIdx));
           this.fx.spawnRing(sp.x, sp.y - 12, 22, '#9affb0', 0.35, 2);
         }

@@ -276,7 +276,7 @@ export class Player {
     return true;
   }
 
-  update(dt: number, input: Input, map: MapDef, fx: Effects, hooks: CombatHooks, allowControl = true, camX = 0) {
+  update(dt: number, input: Input, map: MapDef, fx: Effects, hooks: CombatHooks, allowControl = true) {
     const st = this.stats();
     this.animTime += dt;
     this.hpLag = approach(this.hpLag, this.hp, st.maxHp * 0.75 * dt);
@@ -513,28 +513,24 @@ export class Player {
     this.vy = Math.min(MAX_FALL, this.vy + GRAV * dt);
     this.moveAndCollide(dt, map, fx);
 
-    // 攻击与技能触发（支持瞬间转向 + 缓冲触发 + 位移技取消旋风斩/普攻后摇）
-    const faceForAction = (useMouse: boolean) => {
+    // 攻击与技能触发（仅响应方向键转向，鼠标点击纯触发攻击/位移，不擅自改变人物朝向）
+    const syncFacing = () => {
       if (axis !== 0) this.dir = axis > 0 ? 1 : -1;
-      else if (useMouse && mouseField) {
-        const wx = camX + input.mouse.x;
-        if (Math.abs(wx - this.x) > 8) this.dir = wx >= this.x ? 1 : -1;
-      }
     };
     if (allowControl && this.hurtTimer <= 0) {
       if (this.skill2Buf > 0) {
         // 位移技优先响应，可随时取消旋风斩与普攻后摇躲避 Boss 技能！
-        faceForAction(input.mouse.rclicked);
+        syncFacing();
         if (this.castSkillW(map, fx, hooks, moveU)) {
           this.whirlTimer = 0;
           this.skill2Buf = 0;
         }
       } else if (this.whirlTimer <= 0) {
         if (this.skill1Buf > 0) {
-          faceForAction(false);
+          syncFacing();
           if (this.castSkillQ(map, fx, hooks)) this.skill1Buf = 0;
         } else if ((this.atkBuf > 0 || wantAtkHold) && this.atkTimer <= 0) {
-          faceForAction(mouseField && (input.mouse.clicked || input.mouse.down));
+          syncFacing();
           this.atkBuf = 0;
           this.startAttack(fx);
         }
